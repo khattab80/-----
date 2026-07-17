@@ -11,8 +11,8 @@ from groq import Groq
 # --- قراءة المتغيرات تلقائياً من إعدادات Railway ---
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-# قمنا بإزالة @ من الكود هنا لضمان عدم تكرارها إذا كتبتها في ريلواي
 CHANNEL_ID = os.getenv("CHANNEL_ID", "@Athar_Anthro")  
+
 if not CHANNEL_ID.startswith("@"):
     CHANNEL_ID = f"@{CHANNEL_ID}"
 
@@ -64,8 +64,9 @@ def get_verified_image(keyword):
 
 def generate_groq_content(prompt, system_instruction):
     try:
+        # 👈 تم تحديث اسم النموذج هنا إلى النموذج الجديد المعتمد والمدعوم حالياً
         completion = groq_client.chat.completions.create(
-            model="llama3-8b-8192",
+            model="llama-3.1-8b-instant", 
             messages=[
                 {"role": "system", "content": system_instruction},
                 {"role": "user", "content": prompt}
@@ -84,7 +85,7 @@ async def auto_post_job(context: ContextTypes.DEFAULT_TYPE):
     formatted_post = generate_groq_content(prompt, SYSTEM_PROMPT_POST)
     
     if not formatted_post:
-        print("[خطأ] لم يتم توليد نص من جروق، تأكد من مفتاح GROQ_API_KEY")
+        print("[خطأ] لم يتم توليد نص من جروق، تأكد من مفتاح GROQ_API_KEY أو اسم النموذج")
         return
 
     image_url = get_verified_image(topic)
@@ -116,10 +117,8 @@ async def test_post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await auto_post_job(context)
 
 async def handle_new_post_in_comments(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # طباعة الرسائل القادمة للمجموعة في الـ Logs لمعرفة سبب عدم الرد
     print(f"[مجموعة] استقبلت رسالة جديدة في المجموعة من شات: {update.message.chat.id}")
     
-    # التحقق من القناة
     is_forwarded = update.message.forward_from_chat is not None
     if is_forwarded:
         print(f"[مجموعة] الرسالة محولة من قناة: {update.message.forward_from_chat.username}")
