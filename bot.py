@@ -80,7 +80,8 @@ def generate_groq_content(prompt, system_instruction):
             ],
             temperature=0.7,
         )
-        return completion.choices.message.content
+        # 👈 تم تصحيح القراءة هنا بإضافة [0] لضمان جلب النص بدون مشاكل الـ list
+        return completion.choices[0].message.content
     except Exception as e:
         logging.error(f"خطأ جروق في توليد المحتوى: {e}")
         return None
@@ -131,7 +132,6 @@ async def handle_private_chat(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
     
     print(f"[خاص] رسالة جديدة من المستخدم: {user_query}")
-    # توليد الرد العلمي المخصص للمستخدم بناء على التوجيه الخاص
     ai_response = generate_groq_content(user_query, SYSTEM_PROMPT_PRIVATE_CHAT)
     
     if ai_response:
@@ -181,7 +181,7 @@ def main():
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("testpost", test_post_command))
     
-    # ميزة الرد والنقاش العلمي في الشات الخاص (تم تفعيلها هنا)
+    # ميزة الرد والنقاش العلمي في الشات الخاص 
     application.add_handler(MessageHandler(filters.ChatType.PRIVATE & (~filters.COMMAND), handle_private_chat))
     
     # الاستماع للتعليقات في المجموعات والرد الفوري على منشورات القناة
@@ -191,3 +191,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+        
