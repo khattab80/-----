@@ -18,13 +18,13 @@ if not CHANNEL_ID.startswith("@"):
 
 UNSPLASH_ACCESS_KEY = "kIjWpGPgkjcSmYhgFRVA-guVHTwXtVmm-Ihfarl_Hn0" 
 
-# إعداد العميل باستخدام httpx لمنع أخطاء الـ proxies
+# إعداد العميل باستخدام httpx لمنع أخطاء الـ proxies والكراش
 groq_client = Groq(api_key=GROQ_API_KEY, http_client=httpx.Client())
 wiki = wikipediaapi.Wikipedia(user_agent="AtharAnthroBot/1.0 (aass90.uk@gmail.com)", language="ar")
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
-# --- التوجيهات الصارمة من قبلك لنظام الذكاء الاصطناعي ---
+# --- التوجيهات الصارمة لنظام الذكاء الاصطناعي (System Prompts) ---
 SYSTEM_PROMPT_POST = (
     "تصرف كعالم إنثروبولوجيا (علم الإنسان) خبير ومتحدث لبق باللغة العربية الفصحى. "
     "في المنشورات التلقائية: قسّم المقال إلى نقاط واضحة ومثيرة، واستخدم الرموز التعبيرية المناسبة، "
@@ -35,6 +35,12 @@ SYSTEM_PROMPT_COMMENT = (
     "تصرف كعالم إنثروبولوجيا (علم الإنسان) خبير ومتحدث لبق باللغة العربية الفصحى. "
     "في التعليقات التلقائية: اقرأ المنشور جيداً، وابدأ التعليق بعبارة ترحيبية مشوقة، "
     "ثم أضف معلومة تاريخية أو ثقافية حصرية تدعم المنشور الأساسي وتثري النقاش دون تكرار نفس الكلام الموجود في المنشور."
+)
+
+SYSTEM_PROMPT_PRIVATE_CHAT = (
+    "تصرف كعالم إنثروبولوجيا (علم الإنسان) خبير واستشاري وأستاذ جامعي متحدث لبق باللغة العربية الفصحى. "
+    "عندما يرسل لك المستخدمون أسئلة في الخاص: أجبهم بكل رحابة صدر، وبسط لهم المفاهيم المعقدة في علم الإنسان، "
+    "وزودهم بأمثلة أنثروبولوجية مشوقة ومراجع تاريخية إن أمكن لتبهرهم بثقافتك الرصينة."
 )
 
 ANCHRO_TOPICS = [
@@ -66,7 +72,6 @@ def get_verified_image(keyword):
 
 def generate_groq_content(prompt, system_instruction):
     try:
-        # تحديث اسم النموذج إلى الموديل الفعال والمدعوم حالياً مجاناً من جروق
         completion = groq_client.chat.completions.create(
             model="llama-3.1-8b-instant", 
             messages=[
@@ -111,14 +116,31 @@ async def auto_post_job(context: ContextTypes.DEFAULT_TYPE):
         except Exception as critical_error:
             print(f"[خطأ فادح] البوت لا يستطيع النشر في القناة: {critical_error}")
 
-# --- أوامر التفاعل والاختبار في الخاص وفي التعليقات ---
+# --- أوامر التحكم الأساسية ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("مرحباً بك! أنا بوت 'أثر' لعلم الإنسان، أعمل الآن بنجاح ومستعد للتفاعل في الخاص والتعليقات 🏛️.")
+    await update.message.reply_text("مرحباً بك في المحراب العلمي لـ 'أثر'! 🏛️\nأنا هنا كعالم إنثروبولوجيا مجيب، يمكنك سؤالي عن أي شيء يخص علوم الإنسان والمجتمعات في هذا الشات الخاص وسأجيبك فوراً!")
 
 async def test_post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("جاري تجربة النشر الفوري في القناة الآن... انتظر لحظة 🔄.")
     await auto_post_job(context)
 
+# --- ميزة النقاش والرد التلقائي العلمي في الشات الخاص ---
+async def handle_private_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_query = update.message.text
+    if not user_query:
+        return
+    
+    print(f"[خاص] رسالة جديدة من المستخدم: {user_query}")
+    # توليد الرد العلمي المخصص للمستخدم بناء على التوجيه الخاص
+    ai_response = generate_groq_content(user_query, SYSTEM_PROMPT_PRIVATE_CHAT)
+    
+    if ai_response:
+        try:
+            await update.message.reply_text(ai_response, parse_mode="Markdown")
+        except Exception:
+            await update.message.reply_text(ai_response)
+
+# --- الرد التلقائي الذكي في مجموعة التعليقات ---
 async def handle_new_post_in_comments(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"[مجموعة] استقبلت رسالة في المجموعة من شات: {update.message.chat.id}")
     
@@ -126,7 +148,6 @@ async def handle_new_post_in_comments(update: Update, context: ContextTypes.DEFA
     if is_forwarded:
         print(f"[مجموعة] الرسالة محولة من معرف القناة: {update.message.forward_from_chat.username}")
         
-    # التحقق من أن الرسالة قادمة من القناة المحددة للرد عليها داخل المجموعة
     if is_forwarded and update.message.forward_from_chat.username == CHANNEL_ID.replace("@", ""):
         post_text = update.message.text or update.message.caption
         if not post_text:
@@ -156,15 +177,17 @@ def main():
     job_queue = application.job_queue
     job_queue.run_repeating(auto_post_job, interval=1800, first=10)
 
-    # تشغيل مستمعي الأوامر والتواصل الخاص بالمستخدمين والمجموعة
+    # تشغيل مستمعي الأوامر
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("testpost", test_post_command))
     
-    # الاستماع للتعليقات في المجموعات والرد الفوري على المنشورات المحولة من قناتك
+    # ميزة الرد والنقاش العلمي في الشات الخاص (تم تفعيلها هنا)
+    application.add_handler(MessageHandler(filters.ChatType.PRIVATE & (~filters.COMMAND), handle_private_chat))
+    
+    # الاستماع للتعليقات في المجموعات والرد الفوري على منشورات القناة
     application.add_handler(MessageHandler(filters.ChatType.SUPERGROUP & (~filters.COMMAND), handle_new_post_in_comments))
 
     application.run_polling()
 
 if __name__ == "__main__":
     main()
-    
