@@ -3,20 +3,21 @@ import logging
 import asyncio
 import requests
 import wikipediaapi
-import httpx  # تم إضافته لضمان توافق الشبكة ومنع الكراش
+import httpx  
 from telegram import Update
-from telegram.ext import Application, MessageHandler, filters, ContextTypes
+# تم إضافة CommandHandler هنا لضمان عمل الأوامر التفاعلية بنجاح
+from telegram.ext import Application, MessageHandler, filters, ContextTypes, CommandHandler
 from groq import Groq
 
 # --- قراءة المتغيرات تلقائياً من إعدادات Railway ---
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-CHANNEL_ID = os.getenv("CHANNEL_ID", "@Athar_Anthro")  # معرف قناتك الافتراضي
+CHANNEL_ID = os.getenv("CHANNEL_ID", "@Athar_Anthro")  
 
-# مفتاح Unsplash الثابت الخاص بك
+# مفتاح Unsplash الثابت الخاص بك ل جلب الصور
 UNSPLASH_ACCESS_KEY = "kIjWpGPgkjcSmYhgFRVA-guVHTwXtVmm-Ihfarl_Hn0" 
 
-# إعداد عميل Groq باستخدام httpx لحل مشكلة الـ proxies والكراش نهائياً
+# إعداد عميل Groq باستخدام httpx لتجنب تعارض الـ proxies والكراش
 groq_client = Groq(api_key=GROQ_API_KEY, http_client=httpx.Client())
 wiki = wikipediaapi.Wikipedia(user_agent="AtharAnthroBot/1.0 (aass90.uk@gmail.com)", language="ar")
 
@@ -37,7 +38,7 @@ SYSTEM_PROMPT_COMMENT = (
 )
 
 # قائمة بمواضيع أنثروبولوجية غنية لضمان التجدد كل نصف ساعة
-ANTHRO_TOPICS = [
+ANCHRO_TOPICS = [
     "علم الإنسان الثقافي", "التطور البشري", "نياندرتال", "الأنثروبولوجيا اللغوية", 
     "الطقوس الجنائزية القديمة", "نشأة المجتمعات", "القرابة في علم الإنسان", 
     "الهجرة البشرية الأولى", "أنثروبولوجيا الطعام", "الحضارات القديمة",
@@ -49,7 +50,7 @@ topic_index = 0
 def get_random_anthropology_data():
     """جلب نص عشوائي موثوق من ويكيبيديا حول علم الإنسان"""
     global topic_index
-    topic = ANTHRO_TOPICS[topic_index % len(ANTHRO_TOPICS)]
+    topic = ANCHRO_TOPICS[topic_index % len(ANCHRO_TOPICS)]
     topic_index += 1
     
     try:
@@ -108,6 +109,16 @@ async def auto_post_job(context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logging.error(f"فشل إرسال المنشور إلى القناة: {e}")
 
+# --- وظائف الأوامر الجديدة للتفاعل والاختبار الفوري ---
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """الرد على أمر /start في الخاص لتتأكد أن البوت حي ويعمل"""
+    await update.message.reply_text("مرحباً بك! أنا بوت 'أثر' لعلم الإنسان، أعمل الآن بنجاح في الخلفية على سيرفر Railway 🏛️.")
+
+async def test_post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """أمر تجريبي مخصص لك لتجبر البوت على النشر في القناة فوراً وفحص الصلاحيات"""
+    await update.message.reply_text("جاري تجربة جلب البيانات والنشر في القناة الآن... انتظر لحظة 🔄.")
+    await auto_post_job(context)
+
 # --- الرد التلقائي في مجموعة التعليقات ---
 async def handle_new_post_in_comments(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """الرد على المنشورات المعاد توجيهها في مجموعة النقاش لفتح نقاش في التعليقات"""
@@ -138,6 +149,10 @@ def main():
     job_queue = application.job_queue
     job_queue.run_repeating(auto_post_job, interval=1800, first=10)
 
+    # إضافة الأوامر لتستجيب معك في الشات الخاص بالبوت
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("testpost", test_post_command))
+
     # الاستماع للرسائل داخل المجموعات الفائقة (Supergroups) للرد على التعليقات
     application.add_handler(MessageHandler(filters.ChatType.SUPERGROUP & (~filters.COMMAND), handle_new_post_in_comments))
 
@@ -146,3 +161,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+            
