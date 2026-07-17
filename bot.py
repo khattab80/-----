@@ -18,12 +18,13 @@ if not CHANNEL_ID.startswith("@"):
 
 UNSPLASH_ACCESS_KEY = "kIjWpGPgkjcSmYhgFRVA-guVHTwXtVmm-Ihfarl_Hn0" 
 
-# إعداد العميل
+# إعداد العميل باستخدام httpx لمنع أخطاء الـ proxies
 groq_client = Groq(api_key=GROQ_API_KEY, http_client=httpx.Client())
 wiki = wikipediaapi.Wikipedia(user_agent="AtharAnthroBot/1.0 (aass90.uk@gmail.com)", language="ar")
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
+# --- التوجيهات الصارمة من قبلك لنظام الذكاء الاصطناعي ---
 SYSTEM_PROMPT_POST = (
     "تصرف كعالم إنثروبولوجيا (علم الإنسان) خبير ومتحدث لبق باللغة العربية الفصحى. "
     "في المنشورات التلقائية: قسّم المقال إلى نقاط واضحة ومثيرة، واستخدم الرموز التعبيرية المناسبة، "
@@ -31,8 +32,9 @@ SYSTEM_PROMPT_POST = (
 )
 
 SYSTEM_PROMPT_COMMENT = (
-    "تصرف كعالم إنثروبولوجيا خبير ومتحدث لبق بالفصحى. في التعليقات: ابدأ بعبارة ترحيبية مشوقة، "
-    "ثم أضف معلومة تاريخية أو ثقافية حصرية تدعم المنشور الأساسي دون تكرار."
+    "تصرف كعالم إنثروبولوجيا (علم الإنسان) خبير ومتحدث لبق باللغة العربية الفصحى. "
+    "في التعليقات التلقائية: اقرأ المنشور جيداً، وابدأ التعليق بعبارة ترحيبية مشوقة، "
+    "ثم أضف معلومة تاريخية أو ثقافية حصرية تدعم المنشور الأساسي وتثري النقاش دون تكرار نفس الكلام الموجود في المنشور."
 )
 
 ANCHRO_TOPICS = [
@@ -64,7 +66,7 @@ def get_verified_image(keyword):
 
 def generate_groq_content(prompt, system_instruction):
     try:
-        # 👈 تم تحديث اسم النموذج هنا إلى النموذج الجديد المعتمد والمدعوم حالياً
+        # تحديث اسم النموذج إلى الموديل الفعال والمدعوم حالياً مجاناً من جروق
         completion = groq_client.chat.completions.create(
             model="llama-3.1-8b-instant", 
             messages=[
@@ -80,12 +82,12 @@ def generate_groq_content(prompt, system_instruction):
 
 async def auto_post_job(context: ContextTypes.DEFAULT_TYPE):
     topic, raw_data = get_random_anthropology_data()
-    print(f"[فحص] جاري معالجة موضوع: {topic}")
+    print(f"[فحص] جاري معالجة موضوع القناة: {topic}")
     prompt = f"قم بصياغة منشور احترافي ومثير بناءً على هذه المعلومات: {raw_data}"
     formatted_post = generate_groq_content(prompt, SYSTEM_PROMPT_POST)
     
     if not formatted_post:
-        print("[خطأ] لم يتم توليد نص من جروق، تأكد من مفتاح GROQ_API_KEY أو اسم النموذج")
+        print("[خطأ] لم يتم توليد نص من جروق للقناة.")
         return
 
     image_url = get_verified_image(topic)
@@ -105,52 +107,60 @@ async def auto_post_job(context: ContextTypes.DEFAULT_TYPE):
                 photo=image_url,
                 caption=formatted_post
             )
-            print("[نجاح] تم النشر بنص عادي!")
+            print("[نجاح] تم النشر بنص عادي في القناة!")
         except Exception as critical_error:
-            print(f"[خطأ فادح] البوت لا يستطيع النشر أبداً! السبب الرئيسي: {critical_error}")
+            print(f"[خطأ فادح] البوت لا يستطيع النشر في القناة: {critical_error}")
 
+# --- أوامر التفاعل والاختبار في الخاص وفي التعليقات ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("مرحباً بك! أنا بوت 'أثر' لعلم الإنسان، أعمل الآن بنجاح 🏛️.")
+    await update.message.reply_text("مرحباً بك! أنا بوت 'أثر' لعلم الإنسان، أعمل الآن بنجاح ومستعد للتفاعل في الخاص والتعليقات 🏛️.")
 
 async def test_post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("جاري تجربة جلب البيانات والنشر في القناة الآن... انتظر لحظة 🔄.")
+    await update.message.reply_text("جاري تجربة النشر الفوري في القناة الآن... انتظر لحظة 🔄.")
     await auto_post_job(context)
 
 async def handle_new_post_in_comments(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print(f"[مجموعة] استقبلت رسالة جديدة في المجموعة من شات: {update.message.chat.id}")
+    print(f"[مجموعة] استقبلت رسالة في المجموعة من شات: {update.message.chat.id}")
     
     is_forwarded = update.message.forward_from_chat is not None
     if is_forwarded:
-        print(f"[مجموعة] الرسالة محولة من قناة: {update.message.forward_from_chat.username}")
+        print(f"[مجموعة] الرسالة محولة من معرف القناة: {update.message.forward_from_chat.username}")
         
+    # التحقق من أن الرسالة قادمة من القناة المحددة للرد عليها داخل المجموعة
     if is_forwarded and update.message.forward_from_chat.username == CHANNEL_ID.replace("@", ""):
         post_text = update.message.text or update.message.caption
         if not post_text:
             return
+        
+        print("[مجموعة] جاري توليد التعليق الحصري للمنشور...")
         prompt = f"اقرأ هذا المنشور بعناية وعلق عليه بمعلومات إضافية حصرية: {post_text}"
         ai_comment = generate_groq_content(prompt, SYSTEM_PROMPT_COMMENT)
+        
         if ai_comment:
             try:
                 await update.message.reply_text(ai_comment, parse_mode="Markdown")
-                print("[نجاح] تم الرد في التعليقات!")
-            except Exception as e:
+                print("[نجاح] تم إضافة الرد الذكي في التعليقات بالتنسيق!")
+            except Exception:
                 try:
                     await update.message.reply_text(ai_comment)
-                    print("[نجاح] تم الرد في التعليقات بنص عادي!")
+                    print("[نجاح] تم إضافة الرد الذكي في التعليقات بنص عادي!")
                 except Exception as ce:
-                    print(f"[خطأ] فشل الرد في التعليقات: {ce}")
+                    print(f"[خطأ] فشل الرد النهائي في التعليقات: {ce}")
 
 def main():
     if not TELEGRAM_BOT_TOKEN or not GROQ_API_KEY:
-        print("[خطأ فادح] لم يتم العثور على المتغيرات في ريلواي!")
+        print("[خطأ فادح] المتغيرات مفقودة في إعدادات ريلواي!")
         return
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     
     job_queue = application.job_queue
     job_queue.run_repeating(auto_post_job, interval=1800, first=10)
 
+    # تشغيل مستمعي الأوامر والتواصل الخاص بالمستخدمين والمجموعة
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("testpost", test_post_command))
+    
+    # الاستماع للتعليقات في المجموعات والرد الفوري على المنشورات المحولة من قناتك
     application.add_handler(MessageHandler(filters.ChatType.SUPERGROUP & (~filters.COMMAND), handle_new_post_in_comments))
 
     application.run_polling()
