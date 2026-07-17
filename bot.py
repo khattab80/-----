@@ -11,9 +11,11 @@ from groq import Groq
 # --- قراءة المتغيرات تلقائياً من إعدادات Railway ---
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+# قمنا بإزالة @ من الكود هنا لضمان عدم تكرارها إذا كتبتها في ريلواي
 CHANNEL_ID = os.getenv("CHANNEL_ID", "@Athar_Anthro")  
+if not CHANNEL_ID.startswith("@"):
+    CHANNEL_ID = f"@{CHANNEL_ID}"
 
-# مفتاح Unsplash الثابت الخاص بك
 UNSPLASH_ACCESS_KEY = "kIjWpGPgkjcSmYhgFRVA-guVHTwXtVmm-Ihfarl_Hn0" 
 
 # إعداد العميل
@@ -72,37 +74,39 @@ def generate_groq_content(prompt, system_instruction):
         )
         return completion.choices.message.content
     except Exception as e:
-        logging.error(f"خطأ جروق: {e}")
+        logging.error(f"خطأ جروق في توليد المحتوى: {e}")
         return None
 
 async def auto_post_job(context: ContextTypes.DEFAULT_TYPE):
-    """وظيفة النشر المعدلة لتفادي أخطاء التنسيق"""
     topic, raw_data = get_random_anthropology_data()
+    print(f"[فحص] جاري معالجة موضوع: {topic}")
     prompt = f"قم بصياغة منشور احترافي ومثير بناءً على هذه المعلومات: {raw_data}"
     formatted_post = generate_groq_content(prompt, SYSTEM_PROMPT_POST)
     
-    if formatted_post:
-        image_url = get_verified_image(topic)
+    if not formatted_post:
+        print("[خطأ] لم يتم توليد نص من جروق، تأكد من مفتاح GROQ_API_KEY")
+        return
+
+    image_url = get_verified_image(topic)
+    try:
+        await context.bot.send_photo(
+            chat_id=CHANNEL_ID,
+            photo=image_url,
+            caption=formatted_post,
+            parse_mode="Markdown"
+        )
+        print("[نجاح] تم النشر في القناة بالتنسيق المتقدم!")
+    except Exception as e:
+        print(f"[تحذير] فشل الإرسال بالتنسيق، جاري التجربة بنص عادي. السبب: {e}")
         try:
-            # محاولة الإرسال بالتنسيق المتقدم أولاً
             await context.bot.send_photo(
                 chat_id=CHANNEL_ID,
                 photo=image_url,
-                caption=formatted_post,
-                parse_mode="Markdown"
+                caption=formatted_post
             )
-            logging.info("تم النشر بنجاح بالتنسيق.")
-        except Exception as e:
-            logging.warning(f"فشل الإرسال بالتنسيق، جاري الإرسال كنص عادي: {e}")
-            try:
-                # محاولة الإرسال كنص عادي إذا فشل التنسيق لضمان وصول الرسالة
-                await context.bot.send_photo(
-                    chat_id=CHANNEL_ID,
-                    photo=image_url,
-                    caption=formatted_post
-                )
-            except Exception as critical_error:
-                logging.error(f"فشل الإرسال نهائياً! تأكد من اسم القناة: {critical_error}")
+            print("[نجاح] تم النشر بنص عادي!")
+        except Exception as critical_error:
+            print(f"[خطأ فادح] البوت لا يستطيع النشر أبداً! السبب الرئيسي: {critical_error}")
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("مرحباً بك! أنا بوت 'أثر' لعلم الإنسان، أعمل الآن بنجاح 🏛️.")
@@ -112,7 +116,15 @@ async def test_post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await auto_post_job(context)
 
 async def handle_new_post_in_comments(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.forward_from_chat and update.message.forward_from_chat.username == CHANNEL_ID.replace("@", ""):
+    # طباعة الرسائل القادمة للمجموعة في الـ Logs لمعرفة سبب عدم الرد
+    print(f"[مجموعة] استقبلت رسالة جديدة في المجموعة من شات: {update.message.chat.id}")
+    
+    # التحقق من القناة
+    is_forwarded = update.message.forward_from_chat is not None
+    if is_forwarded:
+        print(f"[مجموعة] الرسالة محولة من قناة: {update.message.forward_from_chat.username}")
+        
+    if is_forwarded and update.message.forward_from_chat.username == CHANNEL_ID.replace("@", ""):
         post_text = update.message.text or update.message.caption
         if not post_text:
             return
@@ -121,11 +133,17 @@ async def handle_new_post_in_comments(update: Update, context: ContextTypes.DEFA
         if ai_comment:
             try:
                 await update.message.reply_text(ai_comment, parse_mode="Markdown")
-            except Exception:
-                await update.message.reply_text(ai_comment)
+                print("[نجاح] تم الرد في التعليقات!")
+            except Exception as e:
+                try:
+                    await update.message.reply_text(ai_comment)
+                    print("[نجاح] تم الرد في التعليقات بنص عادي!")
+                except Exception as ce:
+                    print(f"[خطأ] فشل الرد في التعليقات: {ce}")
 
 def main():
     if not TELEGRAM_BOT_TOKEN or not GROQ_API_KEY:
+        print("[خطأ فادح] لم يتم العثور على المتغيرات في ريلواي!")
         return
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     
@@ -140,4 +158,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-                
+    
