@@ -16,7 +16,7 @@ CHANNEL_ID = os.getenv("CHANNEL_ID", "@Athar_Anthro")  # القيمة الافت
 UNSPLASH_ACCESS_KEY = "kIjWpGPgkjcSmYhgFRVA-guVHTwXtVmm-Ihfarl_Hn0" 
 
 # إعداد عميل Groq وويكيبيديا
-groq_client = Groq(api_key=GROQ_API_KEY)
+groq_client = Groq(api_key=GROQ_API_KEY, http_client=requests.Session()
 wiki = wikipediaapi.Wikipedia(user_agent="AtharBot/1.0 (contact@example.com)", language="ar")
 
 # إعدادات السجلات (Logging)
