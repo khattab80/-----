@@ -17,13 +17,13 @@ if not CHANNEL_ID.startswith("@"):
 
 UNSPLASH_ACCESS_KEY = "kIjwGpgKjcSmYhgFRVA-guYHiTeXtVhm-Ihfar1_HnQ"
 
-# إعداد عميل Groq و ويكيبيديا بشكل صحيح ومضمون
+# إعداد عميل Groq و ويكيبيديا
 groq_client = Groq(api_key=GROQ_API_KEY)
 wiki = wikipediaapi.Wikipedia(user_agent="AtharAnthroBot/1.0 (aass90.uk@gmail.com)", language="ar")
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
-# --- التوجيهات الصارمة لنظام الذكاء الاصطناعي لمنع النصوص الطويلة وأخطاء التنسيق ---
+# --- التوجيهات الصارمة لنظام الذكاء الاصطناعي ---
 SYSTEM_PROMPT_POST = (
     "تصرّف كعالم أنثروبولوجيا (علم الإنسان) خبير ومتحدث باللغة العربية الفصحى. "
     "اكتب منشوراً مشوقاً ومختصراً جداً (بحد أقصى 500 حرف). قسّم المقال إلى نقاط واضحة باستخدام الإيموجي. "
@@ -60,7 +60,22 @@ def get_random_anthropology_data():
         logging.error(f"خطأ ويكيبيديا: {e}")
     return "الأنثروبولوجيا", "البحث في أصل المجتمعات البشرية وثقافاتها وتطورها عبر العصور المعرفية المختلفة."
 
+# ميزة سحرية جديدة: جعل الذكاء الاصطناعي يختار كلمة البحث بالإنجليزية بدقة
+def get_english_search_keyword(topic):
+    try:
+        prompt = f"Give me exactly one or two precise English search keywords for Unsplash images related to the topic: '{topic}'. Output ONLY the keywords, no introduction, no punctuation."
+        completion = groq_client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        keyword = completion.choices.message.content.strip().replace('"', '').replace("'", "")
+        print(f"كلمة البحث الإنجليزية المولدة للصورة: {keyword}")
+        return keyword
+    except Exception:
+        return "anthropology"
+
 def get_verified_image(keyword):
+    # استخدام كلمة البحث الإنجليزية للحصول على أدق نتيجة ممكنة
     url = f"https://unsplash.com{keyword}&client_id={UNSPLASH_ACCESS_KEY}"
     try:
         response = requests.get(url, timeout=10).json()
@@ -70,7 +85,6 @@ def get_verified_image(keyword):
 
 def generate_groq_content(prompt, system_instruction):
     try:
-        # تصحيح الاستدعاء البرمجي المتوافق مع كافة إصدارات Groq الحديثة
         completion = groq_client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[
@@ -78,7 +92,7 @@ def generate_groq_content(prompt, system_instruction):
                 {"role": "user", "content": prompt}
             ]
         )
-        return completion.choices[0].message.content
+        return completion.choices.message.content
     except Exception as e:
         logging.error(f"خطأ في استدعاء Groq: {e}")
         return None
@@ -89,11 +103,13 @@ async def auto_post_job(context: ContextTypes.DEFAULT_TYPE):
     
     post_content = generate_groq_content(prompt, SYSTEM_PROMPT_POST)
     
-    # حل احتياطي ذكي: إذا فشل الذكاء الاصطناعي لأي سبب، لن يتوقف البوت بل سينشر البيانات الأساسية مباشرة ليفيد المشتركين
     if not post_content:
         post_content = f"موضوع اليوم يركز على الأنثروبولوجيا واستكشاف أصل المجتمعات وتطورها الثقافي والاجتماعي عبر العصور التاريخية المختلفة."
 
-    image_url = get_verified_image(topic)
+    # الحصول على كلمة بحث إنجليزية أولاً ثم جلب الصورة المناسبة لها تماماً
+    english_keyword = get_english_search_keyword(topic)
+    image_url = get_verified_image(english_keyword)
+    
     caption_formatted = f"<b>✨ {topic} ✨</b>\n\n{post_content}"
 
     if len(caption_formatted) > 1000:
@@ -125,7 +141,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("مرحباً بك في المحراب العلمي لـ أثر! أنا هنا كعالم إنثروبولوجيا مجيب، يمكنك سؤالي عن أي شيء يخص علوم الإنسان والمجتمعات في هذا الشات الخاص وسأجيبك فوراً!")
 
 async def test_post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("جاري تجربة النشر الفوري في القناة الآن... انتظر لحظة ⏳")
+    await update.message.reply_text("جاري تجربة النشر الفوري والمطور في القناة الآن... انتظر لحظة ⏳")
     await auto_post_job(context)
 
 # --- ميزة الخاص والرد التلقائي العلمي في الشات الخاص ---
@@ -167,15 +183,13 @@ def main():
 
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     
-    # الجدولة الزمنية المضمونة لنشر منشور جديد كل 30 دقيقة (1800 ثانية)
+    # الجدولة الزمنية لنشر منشور جديد كل 30 دقيقة (1800 ثانية)
     job_queue = application.job_queue
     job_queue.run_repeating(auto_post_job, interval=1800, first=10)
 
-    # تسجيل الأوامر الأساسية للبوت
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("testpost", test_post_command))
 
-    # تسجيل مستمعي الرسائل بالتوافق التام مع مكتبة التلجرام الحديثة V20+
     application.add_handler(MessageHandler(filters.ChatType.PRIVATE & (~filters.COMMAND), handle_private_chat))
     application.add_handler(MessageHandler(filters.ChatType.SUPERGROUP & (~filters.COMMAND), handle_new_post_in_comments))
 
@@ -183,4 +197,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
