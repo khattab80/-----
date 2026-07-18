@@ -5,7 +5,7 @@ import requests
 import wikipediaapi
 import httpx
 from telegram import Update
-from telegram.ext import Application, MessageHandler, Filters, ContextTypes, CommandHandler
+from telegram.ext import Application, MessageHandler, ContextTypes, CommandHandler, filters
 from groq import Groq
 
 # --- قراءة المتغيرات تلقائياً من إعدادات Railway ---
@@ -24,7 +24,7 @@ wiki = wikipediaapi.Wikipedia(user_agent="AtharAnthroBot/1.0 (aass90.uk@gmail.co
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
-# --- التوجيهات الصارمة لنظام الذكاء الاصطناعي (تم تحديثها لمنع النصوص الطويلة وأخطاء التنسيق) ---
+# --- التوجيهات الصارمة لنظام الذكاء الاصطناعي ---
 SYSTEM_PROMPT_POST = (
     "تصرّف كعالم أنثروبولوجيا (علم الإنسان) خبير ومتحدث باللغة العربية الفصحى. "
     "اكتب منشوراً مشوقاً ومختصراً جداً (بحد أقصى 600 حرف). قسّم المقال إلى نقاط واضحة باستخدام الإيموجي. "
@@ -56,7 +56,7 @@ def get_random_anthropology_data():
     try:
         page = wiki.page(topic)
         if page.exists:
-            return topic, page.summary[:800] # تقليل حجم الملخص المجلوب
+            return topic, page.summary[:800]
     except Exception as e:
         logging.error(f"خطأ ويكيبيديا: {e}")
     return "الأنثروبولوجيا", "البحث في أصل المجتمعات البشرية وثقافاتها وتطورها عبر العصور."
@@ -67,7 +67,7 @@ def get_verified_image(keyword):
         response = requests.get(url, timeout=10).json()
         return response['urls']['regular']
     except Exception:
-        return "https://unsplash.com" # رابط صورة احتياطية مستقرة
+        return "https://unsplash.com"
 
 def generate_groq_content(prompt, system_instruction):
     try:
@@ -93,11 +93,8 @@ async def auto_post_job(context: ContextTypes.DEFAULT_TYPE):
         return
 
     image_url = get_verified_image(topic)
-    
-    # الاعتماد على تنسيق HTML الآمن وبناء النص برمجياً لتجنب أخطاء القفل
     caption_formatted = f"<b>✨ {topic} ✨</b>\n\n{post_content}"
 
-    # التأكد التام من عدم تجاوز الحد المسموح لتلجرام في وصف الصورة
     if len(caption_formatted) > 1000:
         caption_formatted = caption_formatted[:950] + "..."
 
@@ -110,9 +107,8 @@ async def auto_post_job(context: ContextTypes.DEFAULT_TYPE):
         )
         print("تم النشر في القناة بنجاح باستخدام صيغة HTML آمنة")
     except Exception as e:
-        print(f"فشل الإرسال المنسق، جاري المحاولة بنص خام خالي من التنسيقات. السبب: {e}")
+        print(f"فشل الإرسال المنسق. السبب: {e}")
         try:
-            # تجريد النص تماماً من أي وسوم لإجبار تلجرام على تمريره
             clean_text = f"{topic}\n\n{post_content}"
             await context.bot.send_photo(
                 chat_id=CHANNEL_ID,
@@ -121,14 +117,14 @@ async def auto_post_job(context: ContextTypes.DEFAULT_TYPE):
             )
             print("تم النشر الاحتياطي بنجاح (نص خام)")
         except Exception as ce:
-            print(f"البوت لا يستطيع النشر نهائياً [خطأ فادح في الشبكة أو الصلاحيات]: {ce}")
+            print(f"البوت لا يستطيع النشر نهائياً: {ce}")
 
 # --- أوامر التحكم الأساسية ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("مرحباً يا محب! يمكنك سؤالي عن أي شيء يخص علوم الإنسان والمجتمعات في هذا الشات الخاص وسأجيبك فوراً.")
+    await update.message.reply_text("مرحباً بك في المحراب العلمي لـ أثر! أنا هنا كعالم إنثروبولوجيا مجيب، يمكنك سؤالي عن أي شيء يخص علوم الإنسان والمجتمعات في هذا الشات الخاص وسأجيبك فوراً!")
 
 async def test_post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("جاري تجربة النشر الفوري والمطور في القناة الآن... انتظر لحظة ⏳")
+    await update.message.reply_text("جاري تجربة النشر الفوري في القناة الآن... انتظر لحظة ⏳")
     await auto_post_job(context)
 
 # --- ميزة الخاص والرد التلقائي العلمي في الشات الخاص ---
@@ -168,18 +164,19 @@ def main():
 
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     
+    # الجدولة الزمنية لنشر منشور جديد كل 30 دقيقة (1800 ثانية)
     job_queue = application.job_queue
-    # الجدولة كل 30 دقيقة (1800 ثانية)
     job_queue.run_repeating(auto_post_job, interval=1800, first=10)
 
+    # تسجيل الأوامر (تحديث التسمية لتطابق المدخلات)
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("testpost", test_post_command))
 
-    application.add_handler(MessageHandler(Filters.chat_type.PRIVATE & (~Filters.command), handle_private_chat))
-    application.add_handler(MessageHandler(Filters.chat_type.SUPERGROUP & (~Filters.command), handle_new_post_in_comments))
+    # تسجيل مستمعي الرسائل باستخدام التحديث V20+ المضمون
+    application.add_handler(MessageHandler(filters.ChatType.PRIVATE & (~filters.COMMAND), handle_private_chat))
+    application.add_handler(MessageHandler(filters.ChatType.SUPERGROUP & (~filters.COMMAND), handle_new_post_in_comments))
 
     application.run_polling()
 
 if __name__ == "__main__":
     main()
-        
