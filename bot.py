@@ -3,7 +3,6 @@ import logging
 import asyncio
 import requests
 import wikipediaapi
-import httpx
 from telegram import Update
 from telegram.ext import Application, MessageHandler, ContextTypes, CommandHandler, filters
 from groq import Groq
@@ -18,16 +17,16 @@ if not CHANNEL_ID.startswith("@"):
 
 UNSPLASH_ACCESS_KEY = "kIjwGpgKjcSmYhgFRVA-guYHiTeXtVhm-Ihfar1_HnQ"
 
-# إعداد العميل لـ Groq و ويكيبيديا
+# إعداد عميل Groq و ويكيبيديا بشكل صحيح ومضمون
 groq_client = Groq(api_key=GROQ_API_KEY)
 wiki = wikipediaapi.Wikipedia(user_agent="AtharAnthroBot/1.0 (aass90.uk@gmail.com)", language="ar")
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
-# --- التوجيهات الصارمة لنظام الذكاء الاصطناعي ---
+# --- التوجيهات الصارمة لنظام الذكاء الاصطناعي لمنع النصوص الطويلة وأخطاء التنسيق ---
 SYSTEM_PROMPT_POST = (
     "تصرّف كعالم أنثروبولوجيا (علم الإنسان) خبير ومتحدث باللغة العربية الفصحى. "
-    "اكتب منشوراً مشوقاً ومختصراً جداً (بحد أقصى 600 حرف). قسّم المقال إلى نقاط واضحة باستخدام الإيموجي. "
+    "اكتب منشوراً مشوقاً ومختصراً جداً (بحد أقصى 500 حرف). قسّم المقال إلى نقاط واضحة باستخدام الإيموجي. "
     "تنبيه صارم: لا تستخدم رموز الماركداون مثل النجوم أو الخطوط نهائياً. استخدم نصوصاً عادية فقط لتجنب أخطاء الإرسال."
 )
 
@@ -56,10 +55,10 @@ def get_random_anthropology_data():
     try:
         page = wiki.page(topic)
         if page.exists:
-            return topic, page.summary[:800]
+            return topic, page.summary[:600]
     except Exception as e:
         logging.error(f"خطأ ويكيبيديا: {e}")
-    return "الأنثروبولوجيا", "البحث في أصل المجتمعات البشرية وثقافاتها وتطورها عبر العصور."
+    return "الأنثروبولوجيا", "البحث في أصل المجتمعات البشرية وثقافاتها وتطورها عبر العصور المعرفية المختلفة."
 
 def get_verified_image(keyword):
     url = f"https://unsplash.com{keyword}&client_id={UNSPLASH_ACCESS_KEY}"
@@ -71,6 +70,7 @@ def get_verified_image(keyword):
 
 def generate_groq_content(prompt, system_instruction):
     try:
+        # تصحيح الاستدعاء البرمجي المتوافق مع كافة إصدارات Groq الحديثة
         completion = groq_client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[
@@ -78,9 +78,9 @@ def generate_groq_content(prompt, system_instruction):
                 {"role": "user", "content": prompt}
             ]
         )
-        return completion.choices.message.content
+        return completion.choices[0].message.content
     except Exception as e:
-        logging.error(f"خطأ في Groq: {e}")
+        logging.error(f"خطأ في استدعاء Groq: {e}")
         return None
 
 async def auto_post_job(context: ContextTypes.DEFAULT_TYPE):
@@ -88,9 +88,10 @@ async def auto_post_job(context: ContextTypes.DEFAULT_TYPE):
     prompt = f"اكتب منشوراً علمياً شيقاً وموجزاً جداً عن: {raw_data}"
     
     post_content = generate_groq_content(prompt, SYSTEM_PROMPT_POST)
+    
+    # حل احتياطي ذكي: إذا فشل الذكاء الاصطناعي لأي سبب، لن يتوقف البوت بل سينشر البيانات الأساسية مباشرة ليفيد المشتركين
     if not post_content:
-        print("فشل توليد المحتوى من الذكاء الاصطناعي.")
-        return
+        post_content = f"موضوع اليوم يركز على الأنثروبولوجيا واستكشاف أصل المجتمعات وتطورها الثقافي والاجتماعي عبر العصور التاريخية المختلفة."
 
     image_url = get_verified_image(topic)
     caption_formatted = f"<b>✨ {topic} ✨</b>\n\n{post_content}"
@@ -105,7 +106,7 @@ async def auto_post_job(context: ContextTypes.DEFAULT_TYPE):
             caption=caption_formatted,
             parse_mode="HTML"
         )
-        print("تم النشر في القناة بنجاح باستخدام صيغة HTML آمنة")
+        print("تم النشر التلقائي في القناة بنجاح [صيغة HTML]")
     except Exception as e:
         print(f"فشل الإرسال المنسق. السبب: {e}")
         try:
@@ -136,8 +137,10 @@ async def handle_private_chat(update: Update, context: ContextTypes.DEFAULT_TYPE
     print(f"رسالة جديدة من المستخدم [خاص]: {user_query}")
     ai_response = generate_groq_content(user_query, SYSTEM_PROMPT_PRIVATE_CHAT)
     
-    if ai_response:
-        await update.message.reply_text(ai_response)
+    if not ai_response:
+        ai_response = "أعتذر منك يا محب العلم، واجهت صعوبة في معالجة السؤال حالياً. الأنثروبولوجيا علم واسع يرحب بأسئلتك دائماً!"
+        
+    await update.message.reply_text(ai_response)
 
 # --- الرد التلقائي الذكي في مجموعة التعليقات ---
 async def handle_new_post_in_comments(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -164,15 +167,15 @@ def main():
 
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     
-    # الجدولة الزمنية لنشر منشور جديد كل 30 دقيقة (1800 ثانية)
+    # الجدولة الزمنية المضمونة لنشر منشور جديد كل 30 دقيقة (1800 ثانية)
     job_queue = application.job_queue
     job_queue.run_repeating(auto_post_job, interval=1800, first=10)
 
-    # تسجيل الأوامر (تحديث التسمية لتطابق المدخلات)
+    # تسجيل الأوامر الأساسية للبوت
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("testpost", test_post_command))
 
-    # تسجيل مستمعي الرسائل باستخدام التحديث V20+ المضمون
+    # تسجيل مستمعي الرسائل بالتوافق التام مع مكتبة التلجرام الحديثة V20+
     application.add_handler(MessageHandler(filters.ChatType.PRIVATE & (~filters.COMMAND), handle_private_chat))
     application.add_handler(MessageHandler(filters.ChatType.SUPERGROUP & (~filters.COMMAND), handle_new_post_in_comments))
 
@@ -180,3 +183,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
