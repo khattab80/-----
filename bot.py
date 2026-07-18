@@ -145,12 +145,20 @@ async def test_post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- ميزة الخاص والرد التلقائي العلمي في الشات الخاص ---
 async def handle_private_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_query = update.message.text
-    if not user_query:
+    if not update.message or not update.message.text:
         return
+    
+    user_query = update.message.text
+    print(f"رسالة جديدة من المستخدم [خاص]: {user_query}")
+    
+    # إشعار المستخدم بأن البوت يقوم بالمعالجة
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    
     ai_response = generate_groq_content(user_query, SYSTEM_PROMPT_PRIVATE_CHAT)
     if ai_response:
         await update.message.reply_text(ai_response)
+    else:
+        await update.message.reply_text("أعتذر منك يا محب العلم، واجهت صعوبة في معالجة السؤال حالياً.")
 
 # --- إدارة التفاعل والردود الشاملة داخل مجموعة التعليقات التابعة للقناة ---
 async def handle_group_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -158,20 +166,20 @@ async def handle_group_messages(update: Update, context: ContextTypes.DEFAULT_TY
     if not message or not message.text:
         return
 
-    # أولاً: التحقق مما إذا كانت الرسالة منشورة قادمة محولة من القناة تلقائياً (ليعلق عليها البوت)
+    # أولاً: الرد على المنشورات المحولة تلقائياً من القناة
     is_forwarded = message.forward_from_chat is not None
     if is_forwarded and message.forward_from_chat.username == CHANNEL_ID.replace("@", ""):
         post_text = message.text or message.caption
         if not post_text:
             return
-        print("المنشور وصل للمجموعة، جاري توليد تعليق علمي تلقائي لإثراء النقاش...")
+        print("المنشور وصل للمجموعة، جاري توليد تعليق علمي تلقائي...")
         prompt = f"اقرأ هذا المنشور بعناية وعلق عليه كخبير بمزيد من المعلومات المثرية والشيقة:\n{post_text}"
         ai_comment = generate_groq_content(prompt, SYSTEM_PROMPT_COMMENT)
         if ai_comment:
             await message.reply_text(ai_comment)
             return
 
-    # ثانياً: الرد الذكي على أسئلة الأخوة والأخوات (إذا تم عمل منشن للبوت أو الرد المباشر عليه)
+    # ثانياً: الرد الذكي على أسئلة الأعضاء (منشن أو ريبلاي)
     bot_user = await context.bot.get_me()
     bot_username = f"@{bot_user.username}"
     
@@ -184,7 +192,6 @@ async def handle_group_messages(update: Update, context: ContextTypes.DEFAULT_TY
         
         prompt = f"أحد الأعضاء يسألك في مجموعة النقاش: {user_question}\nأجب عليه إجابة علمية مبسطة ومباشرة."
         ai_response = generate_groq_content(prompt, SYSTEM_PROMPT_GROUP_CHAT)
-        
         if ai_response:
             await message.reply_text(ai_response)
 
@@ -199,17 +206,18 @@ def main():
     job_queue = application.job_queue
     job_queue.run_repeating(auto_post_job, interval=1800, first=10)
 
+    # تسجيل الأوامر الأساسية
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("testpost", test_post_command))
 
-    # مستمع الشات الخاص
-    application.add_handler(MessageHandler(filters.ChatType.PRIVATE & (~filters.COMMAND), handle_private_chat))
+    # تسجيل مستمع الشات الخاص (تمت تصفية النصوص العادية بشكل مرن ومباشر)
+    application.add_handler(MessageHandler(filters.TEXT & filters.ChatType.PRIVATE & (~filters.COMMAND), handle_private_chat))
     
-    # مستمع المجموعة الشامل (يتعامل مع منشورات القناة المحولة + أسئلة الأعضاء المتفاعلين)
-    application.add_handler(MessageHandler(filters.ChatType.SUPERGROUP & (~filters.COMMAND), handle_group_messages))
+    # تسجيل مستمع المجموعات (النصوص العادية)
+    application.add_handler(MessageHandler(filters.TEXT & filters.ChatType.GROUPS & (~filters.COMMAND), handle_group_messages))
 
     application.run_polling()
 
 if __name__ == "__main__":
     main()
-        
+                
