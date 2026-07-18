@@ -31,8 +31,13 @@ SYSTEM_PROMPT_POST = (
 )
 
 SYSTEM_PROMPT_COMMENT = (
-    "تصرّف كعالم أنثروبولوجيا (علم الإنسان) خبير ومتحدث باللغة العربية الفصحى. "
-    "في التعليقات التالية: اقرأ المنشور جيداً وعلق باختصار بعبارة ترحيبية مشوقة دون استخدام أي رموز تنسيق."
+    "تصرّف كعالم أنثروبولوجيا (علم الإنسان) خبير ومتحدث باللغة العربية الفصحى الفصيحة والمشوقة. "
+    "في التعليقات: اقرأ منشور القناة المحول جيداً، واكتب تعليقاً علمياً إضافياً يثري النقاش ويضيف معلومة تاريخية أو ثقافية حصرية وجديدة تماماً دون تكرار كلمات المنشور."
+)
+
+SYSTEM_PROMPT_GROUP_CHAT = (
+    "تصرّف كعالم أنثروبولوجيا خبير ومستشار ودود في مجموعة نقاشات القناة العلمية. "
+    "عندما يوجه لك الأعضاء (الأخوة والأخوات) سؤالاً أو رداً في المجموعة: أجبهم بكل أدب واحترام وبسط لهم المفاهيم العلمية بأسلوب ممتع ومختصر لتشجيعهم على حب علم الإنسان ومتابعة القناة."
 )
 
 SYSTEM_PROMPT_PRIVATE_CHAT = (
@@ -60,7 +65,6 @@ def get_random_anthropology_data():
         logging.error(f"خطأ ويكيبيديا: {e}")
     return "الأنثروبولوجيا", "البحث في أصل المجتمعات البشرية وثقافاتها وتطورها عبر العصور المعرفية المختلفة."
 
-# ميزة سحرية جديدة: جعل الذكاء الاصطناعي يختار كلمة البحث بالإنجليزية بدقة
 def get_english_search_keyword(topic):
     try:
         prompt = f"Give me exactly one or two precise English search keywords for Unsplash images related to the topic: '{topic}'. Output ONLY the keywords, no introduction, no punctuation."
@@ -69,13 +73,11 @@ def get_english_search_keyword(topic):
             messages=[{"role": "user", "content": prompt}]
         )
         keyword = completion.choices.message.content.strip().replace('"', '').replace("'", "")
-        print(f"كلمة البحث الإنجليزية المولدة للصورة: {keyword}")
         return keyword
     except Exception:
         return "anthropology"
 
 def get_verified_image(keyword):
-    # استخدام كلمة البحث الإنجليزية للحصول على أدق نتيجة ممكنة
     url = f"https://unsplash.com{keyword}&client_id={UNSPLASH_ACCESS_KEY}"
     try:
         response = requests.get(url, timeout=10).json()
@@ -102,14 +104,11 @@ async def auto_post_job(context: ContextTypes.DEFAULT_TYPE):
     prompt = f"اكتب منشوراً علمياً شيقاً وموجزاً جداً عن: {raw_data}"
     
     post_content = generate_groq_content(prompt, SYSTEM_PROMPT_POST)
-    
     if not post_content:
         post_content = f"موضوع اليوم يركز على الأنثروبولوجيا واستكشاف أصل المجتمعات وتطورها الثقافي والاجتماعي عبر العصور التاريخية المختلفة."
 
-    # الحصول على كلمة بحث إنجليزية أولاً ثم جلب الصورة المناسبة لها تماماً
     english_keyword = get_english_search_keyword(topic)
     image_url = get_verified_image(english_keyword)
-    
     caption_formatted = f"<b>✨ {topic} ✨</b>\n\n{post_content}"
 
     if len(caption_formatted) > 1000:
@@ -149,32 +148,45 @@ async def handle_private_chat(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_query = update.message.text
     if not user_query:
         return
-    
-    print(f"رسالة جديدة من المستخدم [خاص]: {user_query}")
     ai_response = generate_groq_content(user_query, SYSTEM_PROMPT_PRIVATE_CHAT)
-    
-    if not ai_response:
-        ai_response = "أعتذر منك يا محب العلم، واجهت صعوبة في معالجة السؤال حالياً. الأنثروبولوجيا علم واسع يرحب بأسئلتك دائماً!"
-        
-    await update.message.reply_text(ai_response)
+    if ai_response:
+        await update.message.reply_text(ai_response)
 
-# --- الرد التلقائي الذكي في مجموعة التعليقات ---
-async def handle_new_post_in_comments(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    is_forwarded = update.message.forward_from_chat is not None
-    if is_forwarded and update.message.forward_from_chat.username == CHANNEL_ID.replace("@", ""):
-        post_text = update.message.text or update.message.caption
+# --- إدارة التفاعل والردود الشاملة داخل مجموعة التعليقات التابعة للقناة ---
+async def handle_group_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.message
+    if not message or not message.text:
+        return
+
+    # أولاً: التحقق مما إذا كانت الرسالة منشورة قادمة محولة من القناة تلقائياً (ليعلق عليها البوت)
+    is_forwarded = message.forward_from_chat is not None
+    if is_forwarded and message.forward_from_chat.username == CHANNEL_ID.replace("@", ""):
+        post_text = message.text or message.caption
         if not post_text:
             return
-        
-        prompt = f"اقرأ هذا المنشور وعلق عليه باختصار شديد وبمعلومة إضافية حصرية:\n{post_text}"
+        print("المنشور وصل للمجموعة، جاري توليد تعليق علمي تلقائي لإثراء النقاش...")
+        prompt = f"اقرأ هذا المنشور بعناية وعلق عليه كخبير بمزيد من المعلومات المثرية والشيقة:\n{post_text}"
         ai_comment = generate_groq_content(prompt, SYSTEM_PROMPT_COMMENT)
-        
         if ai_comment:
-            try:
-                await update.message.reply_text(ai_comment)
-                print("تم إضافة التعليق الذكي بنجاح")
-            except Exception:
-                pass
+            await message.reply_text(ai_comment)
+            return
+
+    # ثانياً: الرد الذكي على أسئلة الأخوة والأخوات (إذا تم عمل منشن للبوت أو الرد المباشر عليه)
+    bot_user = await context.bot.get_me()
+    bot_username = f"@{bot_user.username}"
+    
+    is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == bot_user.id
+    is_mentioned = bot_username in message.text
+
+    if is_reply_to_bot or is_mentioned:
+        user_question = message.text.replace(bot_username, "").strip()
+        print(f"سؤال جديد من أحد الأعضاء في المجموعة: {user_question}")
+        
+        prompt = f"أحد الأعضاء يسألك في مجموعة النقاش: {user_question}\nأجب عليه إجابة علمية مبسطة ومباشرة."
+        ai_response = generate_groq_content(prompt, SYSTEM_PROMPT_GROUP_CHAT)
+        
+        if ai_response:
+            await message.reply_text(ai_response)
 
 def main():
     if not TELEGRAM_BOT_TOKEN or not GROQ_API_KEY:
@@ -190,10 +202,14 @@ def main():
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("testpost", test_post_command))
 
+    # مستمع الشات الخاص
     application.add_handler(MessageHandler(filters.ChatType.PRIVATE & (~filters.COMMAND), handle_private_chat))
-    application.add_handler(MessageHandler(filters.ChatType.SUPERGROUP & (~filters.COMMAND), handle_new_post_in_comments))
+    
+    # مستمع المجموعة الشامل (يتعامل مع منشورات القناة المحولة + أسئلة الأعضاء المتفاعلين)
+    application.add_handler(MessageHandler(filters.ChatType.SUPERGROUP & (~filters.COMMAND), handle_group_messages))
 
     application.run_polling()
 
 if __name__ == "__main__":
     main()
+        
